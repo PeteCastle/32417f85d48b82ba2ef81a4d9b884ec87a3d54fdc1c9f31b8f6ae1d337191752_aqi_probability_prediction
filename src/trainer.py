@@ -6,6 +6,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from src.constants import MODELS_DIR
+from src.torch_datasets import generate_datasets
+from src.loss import mdn_loss
+
+import pandas as pd
+import optuna
 
 class Trainer:
     def __init__(self,
@@ -50,8 +55,6 @@ class Trainer:
                 "Running on CPU. Training may be slow. Consider using MPS or CUDA if available.",
             )
 
-        print(f"Using device: {self.device}")
-
         self.model = model.to(self.device)
         self.criterion = criterion
         self.optimizer = optimizer
@@ -71,7 +74,7 @@ class Trainer:
 
         self.start_epoch = self.load(self.model_pth) if os.path.exists(self.model_pth) else 0
 
-    def train(self, num_epochs=30):
+    def train(self, num_epochs=30, save=True):
         """
         Trains the model for a specified number of epochs using the provided training and
         validation datasets, loss function, and optimizer. Supports checkpointing and
@@ -141,6 +144,9 @@ class Trainer:
             print("\n🛑 Training interrupted by user. Saving checkpoint...")
             self.save(epoch + 1)
             raise KeyboardInterrupt from e
+        
+        if save:
+            self.save(num_epochs)
 
     def predict_from_val(self, indices: list[int]):
         """
@@ -288,3 +294,64 @@ class Trainer:
         self.history = checkpoint.get('history', self.history)
         print(f"✅ Loaded checkpoint from '{path}' (epoch {checkpoint.get('epoch', 0)})")
         return checkpoint.get('epoch', 0)
+    
+    @staticmethod
+    def from_template(
+                      dataset_df: pd.DataFrame,
+                      model_class : torch.nn.Module,
+                      hyperparams : dict,
+                      ):
+        import json
+        import hashlib
+
+        hyperparams = hyperparams.copy()
+
+        param_str = json.dumps(hyperparams, sort_keys=True)
+        param_hash = hashlib.md5(param_str.encode()).hexdigest()
+        model_pth = f"{model_class.__name__.lower()}_mdn_{param_hash}_checkpoint.pth"
+
+        print(f"Model path: {model_pth}")
+        # print("Hyperparameters:", hyperparams)
+        training_dataset, validation_dataset = generate_datasets(
+            dataset_df,
+            lookback= hyperparams.pop('lookback_days') * 24,
+            delay=24,
+            step= hyperparams.pop('step')
+        )
+
+        learning_rate = hyperparams.pop('learning_rate')
+
+        model = model_class(
+            input_dim=21,
+            output_dim=7,
+            **hyperparams
+        )
+
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+        return Trainer(
+            model=model,
+            criterion=mdn_loss,
+            optimizer=optimizer,
+            train_dataset=training_dataset,
+            val_dataset=validation_dataset,
+            model_pth=model_pth,
+            batch_size=256
+        )
+    
+    @staticmethod
+    def from_best_optuna_trial(
+        study: optuna.Study,
+        dataset_df: pd.DataFrame,
+        model_class: torch.nn.Module,
+    ):
+        best_trial = study.best_trial
+        hyperparams = best_trial.params
+        # print(hyperparams)
+        
+        # print(f"Best trial hyperparameters: {hyperparams}")
+        return Trainer.from_template(
+            dataset_df=dataset_df,
+            model_class=model_class,
+            hyperparams=hyperparams
+        )

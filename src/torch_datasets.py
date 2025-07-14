@@ -85,7 +85,7 @@ class AQIDataset(Dataset):
         return self.samples[index], self.targets[index]
 
     def get_metadata(self, index: int):
-        normalized_target = self.targets[index].numpy()
+        normalized_target = self.targets[index].cpu().numpy()
         original_target = normalized_target * self.std + self.mean
         return {
             "timestamp": self._timestamps[index],

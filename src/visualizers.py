@@ -16,7 +16,7 @@ class MDNVisualizer:
     def __init__(self, trainer: "Trainer"):
         self.trainer = trainer
 
-    def plot_timeseries_from_val(self, indeces, num_targets=None, title=None):
+    def save_timeseries_from_val(self, indeces, num_targets=None, title=None):
         results = self.trainer.predict_from_val(indeces)
         predictions = results["predictions"]
         ground_truths = results["ground_truths"]
@@ -102,9 +102,11 @@ class MDNVisualizer:
                 # frameon=False,
             )
         plt.tight_layout()
+
+        fig.savefig(OUTPUT_DIR / "01_timeseries_forecast.png", bbox_inches="tight")
         # plt.show()
 
-    def plot_mixture_distributions_at_timestep(self, timestep_index: int, num_targets=None, save_path=None):
+    def save_mixture_distributions_at_timestep(self, timestep_index: int, num_targets=None, save_path=None):
         result = self.trainer.predict_from_val([timestep_index])
 
         mus = result["mus"][0]
@@ -195,7 +197,6 @@ class MDNVisualizer:
             ha='right', va='bottom'
         )
 
-
         if save_path:
             fig.savefig(save_path, bbox_inches="tight")
             plt.close(fig)
@@ -203,21 +204,20 @@ class MDNVisualizer:
             plt.tight_layout()
             plt.show()
 
-    def generate_mixture_gif(self, start: int, end: int, num_targets :int ,  output_path: str = "mixture_evolution.gif"):
+    def generate_mixture_gif(self, start: int, end: int, num_targets :int):
         frame_paths = []
         for t in tqdm(range(start, end), desc="Generating frames", disable=TQDM_DISABLE):
             frame_file = OUTPUT_DIR / f"frame_{t:03d}.png"
-            self.plot_mixture_distributions_at_timestep(timestep_index=t, num_targets=num_targets, save_path=frame_file)
+            self.save_mixture_distributions_at_timestep(timestep_index=t, num_targets=num_targets, save_path=frame_file)
             frame_paths.append(frame_file)
 
         base_size = Image.open(frame_paths[0]).size
         images = [Image.open(fp).resize(base_size) for fp in frame_paths]
-        imageio.mimsave(OUTPUT_DIR/output_path, images, duration=0.8)
+        imageio.mimsave(OUTPUT_DIR/f"04_mixture_evolution.gif", images, duration=0.8)
 
         for fp in frame_paths:
             os.remove(fp)
 
-        print(f"GIF saved to: {output_path}")
 
     def generate_insights_from_timestep(self, timestep_index):
         result = self.trainer.predict_from_val([timestep_index])
@@ -294,3 +294,65 @@ class MDNVisualizer:
             "ci_95": ci_95_bounds,
             "text_report": report_lines
         }
+    
+def save_model_performance(trainer):
+    fig, ax = plt.subplots(1, 2, figsize=(12, 4))  # Add a third subplot
+    fig.suptitle(f'{trainer.model.__class__.__name__} Training History', fontsize=12)
+
+    # Add text annotations for the last epoch's accuracy
+    last_epoch = len(trainer.history['train_loss']) - 1
+    train_acc_last = trainer.history['train_loss'][last_epoch]
+    val_acc_last = trainer.history['val_loss'][last_epoch]
+    ax[0].text(0.5, 0.7, f'Last Train Loss: {train_acc_last:.2f}', transform=ax[0].transAxes, fontsize=10, ha='center', color='blue')
+    ax[0].text(0.5, 0.75, f'Last Val Loss: {val_acc_last:.2f}', transform=ax[0].transAxes, fontsize=10, ha='center', color='orange')
+
+    # Plot loss
+    ax[0].plot(trainer.history['train_loss'], label='Train')
+    ax[0].plot(trainer.history['val_loss'], label='Validation')
+    ax[0].set_title('Model Loss')
+    ax[0].set_ylabel('Loss')
+    ax[0].set_xlabel('Epoch')
+    ax[0].legend(loc='upper left')
+
+    # Plot training time
+    ax[1].plot(trainer.history['training_time'], label='Training Time')
+    ax[1].set_title('Training Time per Epoch')
+    ax[1].set_ylabel('Time (seconds)')
+    ax[1].set_xlabel('Epoch')
+    ax[1].legend(loc='upper left')
+
+    # Calculate average and total training time
+    avg_time = sum(trainer.history['training_time']) / len(trainer.history['training_time'])
+    total_time = sum(trainer.history['training_time'])
+
+    # Add text annotations for average and total training time
+    ax[1].text(0.5, 0.1, f'Avg Time: {avg_time:.2f}s', transform=ax[1].transAxes, fontsize=10, ha='center', color='black')
+    ax[1].text(0.5, 0.05, f'Total Time: {total_time:.2f}s', transform=ax[1].transAxes, fontsize=10, ha='center', color='black')
+
+    fig.savefig(OUTPUT_DIR / f"02_best_model_performance.png", bbox_inches='tight')
+
+    return fig
+
+def compare_model_performance(*trainers):
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+    fig.suptitle('Model Performance Comparison', fontsize=13)
+    
+    for trainer in trainers:
+        ax[0].plot(trainer.history['train_loss'], label=trainer.model.__class__.__name__)
+        ax[1].plot(trainer.history['val_loss'], label=trainer.model.__class__.__name__)
+
+    ax[0].set_title('Train Loss')
+    ax[0].set_ylabel('Loss')
+    ax[0].set_xlabel('Epoch')
+    ax[0].legend(loc='upper left')
+
+    ax[1].set_title('Validation Loss')
+    ax[1].set_ylabel('Loss')
+    ax[1].set_xlabel('Epoch')
+    ax[1].legend(loc='upper left')
+
+    plt.tight_layout()
+
+    fig.savefig(OUTPUT_DIR / "03_model_performance_comparison.png", bbox_inches='tight')
+
+    return fig

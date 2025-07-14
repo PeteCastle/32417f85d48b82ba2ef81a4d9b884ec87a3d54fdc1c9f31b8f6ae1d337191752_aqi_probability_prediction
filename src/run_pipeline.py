@@ -2,6 +2,7 @@ import argparse
 from .data_preprocessing import get_preprocessed_data, get_raw_data
 from .feature_engineering import get_feature_engineered_data
 from .model_training import run_training
+from .evaluation import run_evaluation
 
 def main():
     parser = argparse.ArgumentParser(description="Run the data preprocessing and model training pipeline.")
@@ -19,11 +20,11 @@ def main():
 
     if args.dry_run:
         print("Running in dry run mode. Only 1 epoch and 1 trial will be executed.")
-        run_training(data, num_trials=1, num_epochs=1)
+        studies = run_training(data, num_trials=1, num_epochs=1)
     else:
-        run_training(data, num_trials=args.num_trials, num_epochs=args.num_epochs)
+        studies = run_training(data, num_trials=args.num_trials, num_epochs=args.num_epochs)
 
-    print(args)
+    run_evaluation(studies, data)
     
 if __name__ == "__main__":
     main()

@@ -23,6 +23,10 @@ MODELS_DIR = Path(__file__).parent.parent / "models"
 if not MODELS_DIR.exists():
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
+OUTPUT_DIR = Path(__file__).parent.parent / "output"
+if not OUTPUT_DIR.exists():
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 # Environment Variables
 TQDM_DISABLE = os.getenv("TQDM_DISABLE", "0") == "1"
 

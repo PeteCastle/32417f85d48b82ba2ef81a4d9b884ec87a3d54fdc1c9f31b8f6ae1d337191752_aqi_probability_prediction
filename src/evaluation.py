@@ -2,7 +2,11 @@ import pandas as pd
 import numpy as np
 import torch
 import math
-from src.constants import POLLUTANT_COLUMNS
+from src.constants import POLLUTANT_COLUMNS, OUTPUT_DIR
+from src.trainer import Trainer
+from src.model_training import LSTM_MDN, GRU_MDN, RNN_MDN, TCN_MDN, Transformer_MDN
+from src.visualizers import MDNVisualizer, save_model_performance, compare_model_performance
+from io import StringIO
 
 def calculate_baseline(dataset_df : pd.DataFrame):
     nlls = []
@@ -22,3 +26,59 @@ def calculate_baseline(dataset_df : pd.DataFrame):
 
         nlls.append(nll.item())
         return np.average(nlls)
+
+def run_evaluation(study: dict, dataset_df: pd.DataFrame):
+    trainers = {
+        "LSTM-MDN": Trainer.from_best_optuna_trial(study['lstm'],dataset_df, LSTM_MDN),
+        "GRU-MDN": Trainer.from_best_optuna_trial(study['gru'],dataset_df, GRU_MDN),
+        "RNN-MDN": Trainer.from_best_optuna_trial(study['rnn'],dataset_df, RNN_MDN),
+        "TCN-MDN": Trainer.from_best_optuna_trial(study['tcn'],dataset_df, TCN_MDN),
+        "Transformer-MDN": Trainer.from_best_optuna_trial(study['transformer'],dataset_df,Transformer_MDN),
+    }
+
+    results = []
+    for model_name, trainer in trainers.items():
+        results.append({
+            "Model": model_name,
+            "Training Loss": trainer.history['train_loss'][-1],
+            "Validation Loss": trainer.history['val_loss'][-1],
+            "Training Time per Epoch (s)": np.average(trainer.history['training_time']),
+            "Trainer": trainer
+        })
+
+    best_results_df = pd.DataFrame(results).drop(columns=["Trainer"])
+    best_results_df.set_index("Model", inplace=True)
+    best_row = min(results, key=lambda x: x["Validation Loss"])
+    best_trainer = best_row["Trainer"]
+
+    compare_model_performance(*[trainer for trainer in trainers.values()])
+    save_model_performance(best_trainer)
+
+    sample_indeces = range(0,100)
+    visualizer = MDNVisualizer(best_trainer)
+    visualizer.save_timeseries_from_val(sample_indeces, num_targets=None, title="Example Timeseries")
+    visualizer.generate_mixture_gif(0, 30, num_targets=2)
+
+    buffer = StringIO()
+
+    buffer.write("\n\n\nMODEL RESULTS\n\n")
+    buffer.write(best_results_df.to_string(index=True))
+    buffer.write("\n\n")
+
+    baseline_nll = calculate_baseline(dataset_df)
+    buffer.write(f"Baseline NLL: {baseline_nll:.4f}\n")
+    buffer.write(f"Best model: {best_row['Model']} with val loss: {best_row['Validation Loss']:.4f}\n\n")
+
+    insights = visualizer.generate_insights_from_timestep(0)
+    buffer.write("Example Insights:\n")
+    buffer.write(insights['text_report'][0])
+    buffer.write("\n")
+
+    print(buffer.getvalue())
+
+    with open(OUTPUT_DIR / "00_results.txt", "w") as f:
+        f.write(buffer.getvalue())
+
+    print(f"Evaluation complete. Results and visualizations saved to '{OUTPUT_DIR}'")
+
+    return best_trainer, best_results_df

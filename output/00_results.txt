@@ -1,0 +1,21 @@
+
+
+
+MODEL RESULTS
+
+                 Training Loss  Validation Loss  Training Time per Epoch (s)
+Model                                                                       
+LSTM-MDN             -4.671268        -4.090211                    17.195756
+GRU-MDN               0.125105        -2.796737                   195.685930
+RNN-MDN              -0.041152        -2.652232                    15.653796
+TCN-MDN              -2.502322        -3.211147                    17.695980
+Transformer-MDN       0.286786        -2.536238                    34.864068
+
+Baseline NLL: 15.6145
+Best model: LSTM-MDN with val loss: -4.0902
+
+Example Insights:
+At September 18, 2024 at 5:00 AM, the expected concentration of CO was estimated at 391.21 ug/m³.
+We are 90% confident that the true value lies between 117.33 and 665.09 mg/m³,
+and 95% confident it lies between 64.86 and 717.55 mg/m³.
+

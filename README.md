@@ -15,5 +15,7 @@ source .venv/bin/activate
 
 uv pip install '.[metal]'
 
+uv pip install '.[cuda]'
+
 
 pre-commit run --all-files
