@@ -2,6 +2,7 @@ import pandas as pd
 from tqdm import tqdm
 import numpy as np
 from .data_preprocessing import get_preprocessed_data
+from .constants import DATASET_DIR
 
 def get_feature_engineered_data(df : pd.DataFrame) -> pd.DataFrame:
     if df is None:
@@ -23,5 +24,7 @@ def get_feature_engineered_data(df : pd.DataFrame) -> pd.DataFrame:
     city_column = filled_dfs['city_name'].copy()
     dataset_df = pd.get_dummies(filled_dfs, prefix='city',dtype=np.int8)
     dataset_df["city_name"] = city_column
+
+    dataset_df.to_csv(DATASET_DIR / "processed" / f"feature_engineered_data.csv", index=True)
 
     return dataset_df
