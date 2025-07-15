@@ -1,18 +1,25 @@
-import pandas as pd
-import numpy as np
-import torch
 import math
-from src.constants import POLLUTANT_COLUMNS, OUTPUT_DIR
-from src.trainer import Trainer
-from src.model_training import LSTM_MDN, GRU_MDN, RNN_MDN, TCN_MDN, Transformer_MDN
-from src.visualizers import MDNVisualizer, save_model_performance, compare_model_performance
 from io import StringIO
 
-def calculate_baseline(dataset_df : pd.DataFrame):
+import numpy as np
+import pandas as pd
+import torch
+
+from src.constants import OUTPUT_DIR, POLLUTANT_COLUMNS
+from src.model_training import GRU_MDN, LSTM_MDN, RNN_MDN, TCN_MDN, Transformer_MDN
+from src.trainer import Trainer
+from src.visualizers import (
+    MDNVisualizer,
+    compare_model_performance,
+    save_model_performance,
+)
+
+
+def calculate_baseline(dataset_df: pd.DataFrame):
     nlls = []
-    for _, group in dataset_df.groupby('city_name'):
+    for _, group in dataset_df.groupby("city_name"):
         group = group.copy()
-        y = group.drop(columns=['city_name'])[POLLUTANT_COLUMNS]
+        y = group.drop(columns=["city_name"])[POLLUTANT_COLUMNS]
         y = torch.tensor(y.values, dtype=torch.float32)
         mu = y.mean()
         sigma = y.std()
@@ -21,43 +28,59 @@ def calculate_baseline(dataset_df : pd.DataFrame):
         sigma = torch.clamp(sigma, min=eps)
         z = (y - mu) / sigma
 
-        log_prob = -0.5 * 7 * math.log(2 * math.pi) - torch.sum(torch.log(sigma)) - 0.5 * torch.sum(z ** 2, dim=1)
+        log_prob = (
+            -0.5 * 7 * math.log(2 * math.pi)
+            - torch.sum(torch.log(sigma))
+            - 0.5 * torch.sum(z**2, dim=1)
+        )
         nll = -log_prob.mean()
 
         nlls.append(nll.item())
         return np.average(nlls)
 
-def run_evaluation(study: dict, dataset_df: pd.DataFrame):
+
+def run_evaluation(
+    study: dict, dataset_df: pd.DataFrame, generate_report: bool = False
+):
     trainers = {
-        "LSTM-MDN": Trainer.from_best_optuna_trial(study['lstm'],dataset_df, LSTM_MDN),
-        "GRU-MDN": Trainer.from_best_optuna_trial(study['gru'],dataset_df, GRU_MDN),
-        "RNN-MDN": Trainer.from_best_optuna_trial(study['rnn'],dataset_df, RNN_MDN),
-        "TCN-MDN": Trainer.from_best_optuna_trial(study['tcn'],dataset_df, TCN_MDN),
-        "Transformer-MDN": Trainer.from_best_optuna_trial(study['transformer'],dataset_df,Transformer_MDN),
+        "LSTM-MDN": Trainer.from_best_optuna_trial(study["lstm"], dataset_df, LSTM_MDN),
+        "GRU-MDN": Trainer.from_best_optuna_trial(study["gru"], dataset_df, GRU_MDN),
+        "RNN-MDN": Trainer.from_best_optuna_trial(study["rnn"], dataset_df, RNN_MDN),
+        "TCN-MDN": Trainer.from_best_optuna_trial(study["tcn"], dataset_df, TCN_MDN),
+        "Transformer-MDN": Trainer.from_best_optuna_trial(
+            study["transformer"], dataset_df, Transformer_MDN
+        ),
     }
 
     results = []
     for model_name, trainer in trainers.items():
-        results.append({
-            "Model": model_name,
-            "Training Loss": trainer.history['train_loss'][-1],
-            "Validation Loss": trainer.history['val_loss'][-1],
-            "Training Time per Epoch (s)": np.average(trainer.history['training_time']),
-            "Trainer": trainer
-        })
+        results.append(
+            {
+                "Model": model_name,
+                "Training Loss": trainer.history["train_loss"][-1],
+                "Validation Loss": trainer.history["val_loss"][-1],
+                "Training Time per Epoch (s)": np.average(
+                    trainer.history["training_time"]
+                ),
+                "Trainer": trainer,
+            }
+        )
 
     best_results_df = pd.DataFrame(results).drop(columns=["Trainer"])
     best_results_df.set_index("Model", inplace=True)
     best_row = min(results, key=lambda x: x["Validation Loss"])
     best_trainer = best_row["Trainer"]
 
-    compare_model_performance(*[trainer for trainer in trainers.values()])
-    save_model_performance(best_trainer)
-
-    sample_indeces = range(0,100)
+    sample_indeces = range(0, 100)
     visualizer = MDNVisualizer(best_trainer)
-    visualizer.save_timeseries_from_val(sample_indeces, num_targets=None, title="Example Timeseries")
-    visualizer.generate_mixture_gif(0, 30, num_targets=2)
+
+    if generate_report:
+        compare_model_performance(*[trainer for trainer in trainers.values()])
+        save_model_performance(best_trainer)
+        visualizer.save_timeseries_from_val(
+            sample_indeces, num_targets=None, title="Example Timeseries"
+        )
+        visualizer.generate_mixture_gif(0, 30, num_targets=2)
 
     buffer = StringIO()
 
@@ -67,18 +90,27 @@ def run_evaluation(study: dict, dataset_df: pd.DataFrame):
 
     baseline_nll = calculate_baseline(dataset_df)
     buffer.write(f"Baseline NLL: {baseline_nll:.4f}\n")
-    buffer.write(f"Best model: {best_row['Model']} with val loss: {best_row['Validation Loss']:.4f}\n\n")
+    buffer.write(
+        f"Best model: {best_row['Model']} with val loss: {best_row['Validation Loss']:.4f}\n\n"
+    )
 
     insights = visualizer.generate_insights_from_timestep(0)
     buffer.write("Example Insights:\n")
-    buffer.write(insights['text_report'][0])
+    buffer.write(insights["text_report"][0])
     buffer.write("\n")
 
     print(buffer.getvalue())
 
-    with open(OUTPUT_DIR / "00_results.txt", "w") as f:
-        f.write(buffer.getvalue())
+    if generate_report:
+        with open(OUTPUT_DIR / "metrics.txt", "w") as f:
+            f.write(buffer.getvalue())
 
-    print(f"Evaluation complete. Results and visualizations saved to '{OUTPUT_DIR}'")
+        print(
+            f"Evaluation complete. Results and visualizations saved to '{OUTPUT_DIR}'"
+        )
+    else:
+        print(
+            "Evaluation complete. Use --generate-report to save results and visualizations."
+        )
 
     return best_trainer, best_results_df

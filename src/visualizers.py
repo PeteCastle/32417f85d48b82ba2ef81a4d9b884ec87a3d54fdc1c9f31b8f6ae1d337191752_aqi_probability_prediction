@@ -1,16 +1,19 @@
-import typing
-import os
 import math
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.stats import norm
-from PIL import Image
+import os
+import typing
+
 import imageio
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
+from scipy.stats import norm
 from tqdm import tqdm
-from src.constants import POLLUTANT_COLUMNS, OUTPUT_DIR, TQDM_DISABLE
+
+from src.constants import OUTPUT_DIR, POLLUTANT_COLUMNS, TQDM_DISABLE
 
 if typing.TYPE_CHECKING:
     from src.trainer import Trainer
+
 
 class MDNVisualizer:
     def __init__(self, trainer: "Trainer"):
@@ -50,7 +53,10 @@ class MDNVisualizer:
             sigma = sigmas[:, :, target_idx]
             alpha = alphas
 
-            mixture_var = np.sum(alpha * (sigma**2 + mu**2), axis=1) - np.sum(alpha * mu, axis=1)**2
+            mixture_var = (
+                np.sum(alpha * (sigma**2 + mu**2), axis=1)
+                - np.sum(alpha * mu, axis=1) ** 2
+            )
             mixture_std = np.sqrt(np.clip(mixture_var, 1e-8, None))
 
             mean = means[0][target_idx]
@@ -71,7 +77,9 @@ class MDNVisualizer:
                 x,
                 np.clip(y_pred - z_90 * mixture_std_scaled, a_min=0, a_max=None),
                 y_pred + z_90 * mixture_std_scaled,
-                color='blue', alpha=0.12, label="90% CI"
+                color="blue",
+                alpha=0.12,
+                label="90% CI",
             )
 
             # 95% CI (clip lower bound to 0)
@@ -79,10 +87,14 @@ class MDNVisualizer:
                 x,
                 np.clip(y_pred - z_95 * mixture_std_scaled, a_min=0, a_max=None),
                 y_pred + z_95 * mixture_std_scaled,
-                color='blue', alpha=0.07, label="95% CI"
+                color="blue",
+                alpha=0.07,
+                label="95% CI",
             )
 
-            ax.set_title(f"{POLLUTANT_COLUMNS[target_idx].replace('components.', '').replace('_','.').upper()} Forecast")
+            ax.set_title(
+                f"{POLLUTANT_COLUMNS[target_idx].replace('components.', '').replace('_','.').upper()} Forecast"
+            )
             ax.set_ylabel("Concentration (ug/m³)")
             ax.grid(True)
 
@@ -93,20 +105,22 @@ class MDNVisualizer:
         # axs[-1].set_xlabel("Timestamp")
         if title:
             plt.suptitle(title, fontsize=16)
-      
+
         fig.legend(
-                *axs[0].get_legend_handles_labels(),
-                loc="upper right",
-                ncol=2
-                # bbox_to_anchor=(0.82, 0.08),
-                # frameon=False,
-            )
+            *axs[0].get_legend_handles_labels(),
+            loc="upper right",
+            ncol=2,
+            # bbox_to_anchor=(0.82, 0.08),
+            # frameon=False,
+        )
         plt.tight_layout()
 
         fig.savefig(OUTPUT_DIR / "01_timeseries_forecast.png", bbox_inches="tight")
         # plt.show()
 
-    def save_mixture_distributions_at_timestep(self, timestep_index: int, num_targets=None, save_path=None):
+    def save_mixture_distributions_at_timestep(
+        self, timestep_index: int, num_targets=None, save_path=None
+    ):
         result = self.trainer.predict_from_val([timestep_index])
 
         mus = result["mus"][0]
@@ -124,13 +138,12 @@ class MDNVisualizer:
         nrows = math.ceil(num_targets / ncols)
 
         fig, axs = plt.subplots(nrows, ncols, figsize=(10, 4 * nrows), sharex=False)
-        
+
         # fig.suptitle("Mixture Distributions", fontsize=16)
         axs = axs.flatten()
 
         mixture_line = None
         sum_line = None
-        
 
         for target_idx in range(num_targets):
             ax = axs[target_idx]
@@ -150,7 +163,9 @@ class MDNVisualizer:
             total_pdf = np.zeros_like(x_scaled)
 
             for k in range(num_mixtures):
-                pdf = alpha[k] * norm.pdf(x_scaled, loc=mu_scaled[k], scale=sigma_scaled[k])
+                pdf = alpha[k] * norm.pdf(
+                    x_scaled, loc=mu_scaled[k], scale=sigma_scaled[k]
+                )
                 total_pdf += pdf
 
                 # Save the first mixture line for the legend
@@ -167,14 +182,17 @@ class MDNVisualizer:
             std_combined = np.sqrt(np.sum(alpha * sigma_scaled**2))
             ax.set_xlim(mu_center - 4 * std_combined, mu_center + 4 * std_combined)
             ax.set_xlabel("Concentration (mg/m³)")
-            ax.set_title(f"{POLLUTANT_COLUMNS[target_idx]}".replace("components.", "").replace("_", ".").upper())
+            ax.set_title(
+                f"{POLLUTANT_COLUMNS[target_idx]}".replace("components.", "")
+                .replace("_", ".")
+                .upper()
+            )
             ax.set_ylabel("Density")
             ax.grid(True)
 
         for idx in range(num_targets, len(axs)):
             fig.delaxes(axs[idx])
 
-       
         if mixture_line and sum_line:
             fig.legend(
                 handles=[mixture_line, sum_line],
@@ -187,14 +205,19 @@ class MDNVisualizer:
 
         fig.suptitle(
             f"Mixture Distributions",
-            fontsize=16, fontweight='bold',
+            fontsize=16,
+            fontweight="bold",
             # ha='right', va='bottom'
         )
 
         fig.text(
-            0.1, 0.90, f"{timestamp.strftime('%-I %p')}",
-            fontsize=12, fontweight='bold',
-            ha='right', va='bottom'
+            0.1,
+            0.90,
+            f"{timestamp.strftime('%-I %p')}",
+            fontsize=12,
+            fontweight="bold",
+            ha="right",
+            va="bottom",
         )
 
         if save_path:
@@ -204,29 +227,32 @@ class MDNVisualizer:
             plt.tight_layout()
             plt.show()
 
-    def generate_mixture_gif(self, start: int, end: int, num_targets :int):
+    def generate_mixture_gif(self, start: int, end: int, num_targets: int):
         frame_paths = []
-        for t in tqdm(range(start, end), desc="Generating frames", disable=TQDM_DISABLE):
+        for t in tqdm(
+            range(start, end), desc="Generating frames", disable=TQDM_DISABLE
+        ):
             frame_file = OUTPUT_DIR / f"frame_{t:03d}.png"
-            self.save_mixture_distributions_at_timestep(timestep_index=t, num_targets=num_targets, save_path=frame_file)
+            self.save_mixture_distributions_at_timestep(
+                timestep_index=t, num_targets=num_targets, save_path=frame_file
+            )
             frame_paths.append(frame_file)
 
         base_size = Image.open(frame_paths[0]).size
         images = [Image.open(fp).resize(base_size) for fp in frame_paths]
-        imageio.mimsave(OUTPUT_DIR/f"04_mixture_evolution.gif", images, duration=0.8)
+        imageio.mimsave(OUTPUT_DIR / f"04_mixture_evolution.gif", images, duration=0.8)
 
         for fp in frame_paths:
             os.remove(fp)
 
-
     def generate_insights_from_timestep(self, timestep_index):
         result = self.trainer.predict_from_val([timestep_index])
 
-        mus = result["mus"][0]          # (num_mixtures, num_targets)
-        sigmas = result["sigmas"][0]    # (num_mixtures, num_targets)
-        alphas = result["alphas"][0]    # (num_mixtures,)
-        means = result["means"][0]      # (num_targets,)
-        stds = result["stds"][0]        # (num_targets,)
+        mus = result["mus"][0]  # (num_mixtures, num_targets)
+        sigmas = result["sigmas"][0]  # (num_mixtures, num_targets)
+        alphas = result["alphas"][0]  # (num_mixtures,)
+        means = result["means"][0]  # (num_targets,)
+        stds = result["stds"][0]  # (num_targets,)
         timestamp = result["timestamps"][0]  # datetime
 
         num_mixtures, num_targets = mus.shape
@@ -249,15 +275,9 @@ class MDNVisualizer:
             z90 = norm.ppf(0.95)
             z95 = norm.ppf(0.975)
 
-            ci_90 = (
-                max(0, expected - z90 * std_dev),
-                expected + z90 * std_dev
-            )
+            ci_90 = (max(0, expected - z90 * std_dev), expected + z90 * std_dev)
 
-            ci_95 = (
-                max(0, expected - z95 * std_dev),
-                expected + z95 * std_dev
-            )
+            ci_95 = (max(0, expected - z95 * std_dev), expected + z95 * std_dev)
 
             ci_90_bounds.append(ci_90)
             ci_95_bounds.append(ci_95)
@@ -265,11 +285,20 @@ class MDNVisualizer:
         mus_unnorm = mus * stds[None, :] + means[None, :]
         sigmas_unnorm = sigmas * stds[None, :]
 
-        timestamp_str = timestamp.strftime("%B %d, %Y at %-I:%M %p") if hasattr(timestamp, "strftime") else str(timestamp)
+        timestamp_str = (
+            timestamp.strftime("%B %d, %Y at %-I:%M %p")
+            if hasattr(timestamp, "strftime")
+            else str(timestamp)
+        )
         report_lines = []
 
         for i in range(num_targets):
-            pollutant = POLLUTANT_COLUMNS[i].replace("components.", "").replace("_", ".").upper()
+            pollutant = (
+                POLLUTANT_COLUMNS[i]
+                .replace("components.", "")
+                .replace("_", ".")
+                .upper()
+            )
             expected = expected_values[i]
             ci90_lower, ci90_upper = ci_90_bounds[i]
             ci95_lower, ci95_upper = ci_95_bounds[i]
@@ -285,74 +314,108 @@ class MDNVisualizer:
         return {
             "timestamp": timestamp,
             "expected_values": expected_values,
-            "mixtures": {
-                "mu": mus_unnorm,
-                "sigma": sigmas_unnorm,
-                "alpha": alphas
-            },
+            "mixtures": {"mu": mus_unnorm, "sigma": sigmas_unnorm, "alpha": alphas},
             "ci_90": ci_90_bounds,
             "ci_95": ci_95_bounds,
-            "text_report": report_lines
+            "text_report": report_lines,
         }
-    
+
+
 def save_model_performance(trainer):
     fig, ax = plt.subplots(1, 2, figsize=(12, 4))  # Add a third subplot
-    fig.suptitle(f'{trainer.model.__class__.__name__} Training History', fontsize=12)
+    fig.suptitle(f"{trainer.model.__class__.__name__} Training History", fontsize=12)
 
     # Add text annotations for the last epoch's accuracy
-    last_epoch = len(trainer.history['train_loss']) - 1
-    train_acc_last = trainer.history['train_loss'][last_epoch]
-    val_acc_last = trainer.history['val_loss'][last_epoch]
-    ax[0].text(0.5, 0.7, f'Last Train Loss: {train_acc_last:.2f}', transform=ax[0].transAxes, fontsize=10, ha='center', color='blue')
-    ax[0].text(0.5, 0.75, f'Last Val Loss: {val_acc_last:.2f}', transform=ax[0].transAxes, fontsize=10, ha='center', color='orange')
+    last_epoch = len(trainer.history["train_loss"]) - 1
+    train_acc_last = trainer.history["train_loss"][last_epoch]
+    val_acc_last = trainer.history["val_loss"][last_epoch]
+    ax[0].text(
+        0.5,
+        0.7,
+        f"Last Train Loss: {train_acc_last:.2f}",
+        transform=ax[0].transAxes,
+        fontsize=10,
+        ha="center",
+        color="blue",
+    )
+    ax[0].text(
+        0.5,
+        0.75,
+        f"Last Val Loss: {val_acc_last:.2f}",
+        transform=ax[0].transAxes,
+        fontsize=10,
+        ha="center",
+        color="orange",
+    )
 
     # Plot loss
-    ax[0].plot(trainer.history['train_loss'], label='Train')
-    ax[0].plot(trainer.history['val_loss'], label='Validation')
-    ax[0].set_title('Model Loss')
-    ax[0].set_ylabel('Loss')
-    ax[0].set_xlabel('Epoch')
-    ax[0].legend(loc='upper left')
+    ax[0].plot(trainer.history["train_loss"], label="Train")
+    ax[0].plot(trainer.history["val_loss"], label="Validation")
+    ax[0].set_title("Model Loss")
+    ax[0].set_ylabel("Loss")
+    ax[0].set_xlabel("Epoch")
+    ax[0].legend(loc="upper left")
 
     # Plot training time
-    ax[1].plot(trainer.history['training_time'], label='Training Time')
-    ax[1].set_title('Training Time per Epoch')
-    ax[1].set_ylabel('Time (seconds)')
-    ax[1].set_xlabel('Epoch')
-    ax[1].legend(loc='upper left')
+    ax[1].plot(trainer.history["training_time"], label="Training Time")
+    ax[1].set_title("Training Time per Epoch")
+    ax[1].set_ylabel("Time (seconds)")
+    ax[1].set_xlabel("Epoch")
+    ax[1].legend(loc="upper left")
 
     # Calculate average and total training time
-    avg_time = sum(trainer.history['training_time']) / len(trainer.history['training_time'])
-    total_time = sum(trainer.history['training_time'])
+    avg_time = sum(trainer.history["training_time"]) / len(
+        trainer.history["training_time"]
+    )
+    total_time = sum(trainer.history["training_time"])
 
     # Add text annotations for average and total training time
-    ax[1].text(0.5, 0.1, f'Avg Time: {avg_time:.2f}s', transform=ax[1].transAxes, fontsize=10, ha='center', color='black')
-    ax[1].text(0.5, 0.05, f'Total Time: {total_time:.2f}s', transform=ax[1].transAxes, fontsize=10, ha='center', color='black')
+    ax[1].text(
+        0.5,
+        0.1,
+        f"Avg Time: {avg_time:.2f}s",
+        transform=ax[1].transAxes,
+        fontsize=10,
+        ha="center",
+        color="black",
+    )
+    ax[1].text(
+        0.5,
+        0.05,
+        f"Total Time: {total_time:.2f}s",
+        transform=ax[1].transAxes,
+        fontsize=10,
+        ha="center",
+        color="black",
+    )
 
-    fig.savefig(OUTPUT_DIR / f"02_best_model_performance.png", bbox_inches='tight')
+    fig.savefig(OUTPUT_DIR / f"02_best_model_performance.png", bbox_inches="tight")
 
     return fig
 
+
 def compare_model_performance(*trainers):
     fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-    fig.suptitle('Model Performance Comparison', fontsize=13)
-    
+    fig.suptitle("Model Performance Comparison", fontsize=13)
+
     for trainer in trainers:
-        ax[0].plot(trainer.history['train_loss'], label=trainer.model.__class__.__name__)
-        ax[1].plot(trainer.history['val_loss'], label=trainer.model.__class__.__name__)
+        ax[0].plot(
+            trainer.history["train_loss"], label=trainer.model.__class__.__name__
+        )
+        ax[1].plot(trainer.history["val_loss"], label=trainer.model.__class__.__name__)
 
-    ax[0].set_title('Train Loss')
-    ax[0].set_ylabel('Loss')
-    ax[0].set_xlabel('Epoch')
-    ax[0].legend(loc='upper left')
+    ax[0].set_title("Train Loss")
+    ax[0].set_ylabel("Loss")
+    ax[0].set_xlabel("Epoch")
+    ax[0].legend(loc="upper left")
 
-    ax[1].set_title('Validation Loss')
-    ax[1].set_ylabel('Loss')
-    ax[1].set_xlabel('Epoch')
-    ax[1].legend(loc='upper left')
+    ax[1].set_title("Validation Loss")
+    ax[1].set_ylabel("Loss")
+    ax[1].set_xlabel("Epoch")
+    ax[1].legend(loc="upper left")
 
     plt.tight_layout()
 
-    fig.savefig(OUTPUT_DIR / "03_model_performance_comparison.png", bbox_inches='tight')
+    fig.savefig(OUTPUT_DIR / "03_model_performance_comparison.png", bbox_inches="tight")
 
     return fig

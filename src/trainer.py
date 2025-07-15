@@ -1,26 +1,30 @@
 import os
-import warnings
 import time
-from tqdm import tqdm
+import warnings
+
 import numpy as np
+import optuna
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-from src.constants import MODELS_DIR
-from src.torch_datasets import generate_datasets
-from src.loss import mdn_loss
+from tqdm import tqdm
 
-import pandas as pd
-import optuna
+from src.constants import MODELS_DIR
+from src.loss import mdn_loss
+from src.torch_datasets import generate_datasets
+
 
 class Trainer:
-    def __init__(self,
-                 model: torch.nn.Module,
-                 criterion,
-                 optimizer,
-                 train_dataset,
-                 val_dataset=None,
-                 model_pth: str = "model_checkpoint.pth",
-                 batch_size: int = 256):
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        criterion,
+        optimizer,
+        train_dataset,
+        val_dataset=None,
+        model_pth: str = "model_checkpoint.pth",
+        batch_size: int = 256,
+    ):
         """
         Initializes the training pipeline for a PyTorch model, including device configuration,
         data loading, and model checkpoint handling.
@@ -42,7 +46,7 @@ class Trainer:
             history (dict): Dictionary to store training history including loss and timing.
             start_epoch (int): The starting epoch index, updated if a checkpoint exists.
         """
-        
+
         if torch.backends.mps.is_available():
             self.device = torch.device("mps")
         elif torch.cuda.is_available():
@@ -63,16 +67,20 @@ class Trainer:
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
 
-        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        self.val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False) if val_dataset else None
+        self.train_loader = DataLoader(
+            train_dataset, batch_size=batch_size, shuffle=True
+        )
+        self.val_loader = (
+            DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+            if val_dataset
+            else None
+        )
 
-        self.history = {
-            'train_loss': [],
-            'val_loss': [],
-            'training_time': []
-        }
+        self.history = {"train_loss": [], "val_loss": [], "training_time": []}
 
-        self.start_epoch = self.load(self.model_pth) if os.path.exists(self.model_pth) else 0
+        self.start_epoch = (
+            self.load(self.model_pth) if os.path.exists(self.model_pth) else 0
+        )
 
     def train(self, num_epochs=30, save=True):
         """
@@ -81,7 +89,7 @@ class Trainer:
         interruption handling.
 
         Args:
-            num_epochs (int, optional): The total number of training epochs. 
+            num_epochs (int, optional): The total number of training epochs.
                                         Training will resume from `self.start_epoch` if a checkpoint is found. Defaults to 30.
 
         Behavior:
@@ -96,62 +104,80 @@ class Trainer:
             KeyboardInterrupt: If training is manually interrupted, a checkpoint is saved and the exception is re-raised.
         """
         try:
-            for epoch in (pbar:=tqdm(range(self.start_epoch, num_epochs))):
+            for epoch in (pbar := tqdm(range(self.start_epoch, num_epochs))):
                 start_time = time.time()
                 self.model.train()
                 train_loss = 0.0
 
-                for inputs, targets in tqdm(self.train_loader, desc=f"Epoch {epoch+1}", unit="batch", disable=True):
+                for inputs, targets in tqdm(
+                    self.train_loader,
+                    desc=f"Epoch {epoch+1}",
+                    unit="batch",
+                    disable=True,
+                ):
                     inputs = inputs.to(self.device)
                     targets = targets.to(self.device)
-    
+
                     self.optimizer.zero_grad()
                     mu, sigma, alpha = self.model(inputs)
-               
+
                     # print("Mu shape:", mu.shape)
                     # print(mu[:, 1])
-                    loss = self.criterion(targets, mu, sigma, alpha, self.model.num_mixtures)
+                    loss = self.criterion(
+                        targets, mu, sigma, alpha, self.model.num_mixtures
+                    )
                     loss.backward()
                     self.optimizer.step()
                     train_loss += loss.detach().item()
 
                 avg_train_loss = train_loss / len(self.train_loader)
-                self.history['train_loss'].append(avg_train_loss)
+                self.history["train_loss"].append(avg_train_loss)
 
                 if self.val_loader:
                     self.model.eval()
                     val_loss = 0.0
                     with torch.no_grad():
-                        for inputs, targets in tqdm(self.val_loader, desc="Validation", unit="batch", disable=True):
+                        for inputs, targets in tqdm(
+                            self.val_loader,
+                            desc="Validation",
+                            unit="batch",
+                            disable=True,
+                        ):
                             inputs = inputs.to(self.device)
                             targets = targets.to(self.device)
 
                             mu, sigma, alpha = self.model(inputs)
-                            loss = self.criterion(targets, mu, sigma, alpha, self.model.num_mixtures)
-                            
+                            loss = self.criterion(
+                                targets, mu, sigma, alpha, self.model.num_mixtures
+                            )
+
                             val_loss += loss.item()
 
                     avg_val_loss = val_loss / len(self.val_loader)
-                    self.history['val_loss'].append(avg_val_loss)
+                    self.history["val_loss"].append(avg_val_loss)
 
-                    pbar.set_description(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f} - Val Loss: {avg_val_loss:.6f}")
+                    pbar.set_description(
+                        f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f} - Val Loss: {avg_val_loss:.6f}"
+                    )
                 else:
-                    pbar.set_description(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}")
+                    pbar.set_description(
+                        f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}"
+                    )
 
-                self.history['training_time'].append(time.time() - start_time)
+                self.history["training_time"].append(time.time() - start_time)
 
         except KeyboardInterrupt as e:
             print("\n🛑 Training interrupted by user. Saving checkpoint...")
             self.save(epoch + 1)
             raise KeyboardInterrupt from e
-        
+
         if save:
             self.save(num_epochs)
 
     def predict_from_val(self, indices: list[int]):
         """
         Generates predictions from specific samples in the validation dataset using a trained
-        Mixture Density Network (MDN) model. Computes the expected value of the predicted 
+        Mixture Density Network (MDN) model. Computes the expected value of the predicted
         mixture distribution and retrieves metadata for interpretability.
 
         Args:
@@ -232,7 +258,6 @@ class Trainer:
             "unnormalized_targets": np.array(original_targets),
             "means": np.array(means),
             "stds": np.array(stds),
-            
         }
 
     def save(self, epoch=None):
@@ -256,14 +281,17 @@ class Trainer:
 
         """
         if epoch is None:
-            epoch = len(self.history['train_loss'])
+            epoch = len(self.history["train_loss"])
 
-        torch.save({
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'history': self.history,
-            'epoch': epoch,
-        }, self.model_pth)
+        torch.save(
+            {
+                "model_state_dict": self.model.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "history": self.history,
+                "epoch": epoch,
+            },
+            self.model_pth,
+        )
         print(f"✅ Saved model to {self.model_pth} at epoch {epoch}")
 
     def load(self, path):
@@ -289,20 +317,22 @@ class Trainer:
 
         """
         checkpoint = torch.load(path, map_location=self.device)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.history = checkpoint.get('history', self.history)
-        print(f"✅ Loaded checkpoint from '{path}' (epoch {checkpoint.get('epoch', 0)})")
-        return checkpoint.get('epoch', 0)
-    
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        self.history = checkpoint.get("history", self.history)
+        print(
+            f"✅ Loaded checkpoint from '{path}' (epoch {checkpoint.get('epoch', 0)})"
+        )
+        return checkpoint.get("epoch", 0)
+
     @staticmethod
     def from_template(
-                      dataset_df: pd.DataFrame,
-                      model_class : torch.nn.Module,
-                      hyperparams : dict,
-                      ):
-        import json
+        dataset_df: pd.DataFrame,
+        model_class: torch.nn.Module,
+        hyperparams: dict,
+    ):
         import hashlib
+        import json
 
         hyperparams = hyperparams.copy()
 
@@ -314,18 +344,14 @@ class Trainer:
         # print("Hyperparameters:", hyperparams)
         training_dataset, validation_dataset = generate_datasets(
             dataset_df,
-            lookback= hyperparams.pop('lookback_days') * 24,
+            lookback=hyperparams.pop("lookback_days") * 24,
             delay=24,
-            step= hyperparams.pop('step')
+            step=hyperparams.pop("step"),
         )
 
-        learning_rate = hyperparams.pop('learning_rate')
+        learning_rate = hyperparams.pop("learning_rate")
 
-        model = model_class(
-            input_dim=21,
-            output_dim=7,
-            **hyperparams
-        )
+        model = model_class(input_dim=21, output_dim=7, **hyperparams)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -336,9 +362,9 @@ class Trainer:
             train_dataset=training_dataset,
             val_dataset=validation_dataset,
             model_pth=model_pth,
-            batch_size=256
+            batch_size=256,
         )
-    
+
     @staticmethod
     def from_best_optuna_trial(
         study: optuna.Study,
@@ -348,10 +374,8 @@ class Trainer:
         best_trial = study.best_trial
         hyperparams = best_trial.params
         # print(hyperparams)
-        
+
         # print(f"Best trial hyperparameters: {hyperparams}")
         return Trainer.from_template(
-            dataset_df=dataset_df,
-            model_class=model_class,
-            hyperparams=hyperparams
+            dataset_df=dataset_df, model_class=model_class, hyperparams=hyperparams
         )

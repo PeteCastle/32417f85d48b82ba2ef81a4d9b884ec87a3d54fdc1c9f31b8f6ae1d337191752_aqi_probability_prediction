@@ -1,12 +1,15 @@
-import os
 import hashlib
+import os
 import pickle
-from tqdm import tqdm
+
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, ConcatDataset
+from torch.utils.data import ConcatDataset, Dataset
+from tqdm import tqdm
+
 from src.constants import CACHE_DIR, POLLUTANT_COLUMNS
+
 
 class AQIDataset(Dataset):
     def __init__(self, data, lookback, delay, min_index, max_index, step, mean, std):
@@ -17,8 +20,10 @@ class AQIDataset(Dataset):
         self.lookback = lookback
         self.delay = delay
         self.min_index = min_index
-        self.max_index = min(max_index if max_index is not None else len(data) - delay - 1,
-                             len(data) - delay - 1)
+        self.max_index = min(
+            max_index if max_index is not None else len(data) - delay - 1,
+            len(data) - delay - 1,
+        )
         self.step = step
         self.mean = mean
         self.std = std
@@ -51,7 +56,9 @@ class AQIDataset(Dataset):
                 i = self.min_index + idx + self.lookback
                 indices = range(i - self.lookback, i, self.step)
 
-                sample = self.data.iloc[indices].values  # shape: (lookback, num_features)
+                sample = self.data.iloc[
+                    indices
+                ].values  # shape: (lookback, num_features)
                 target_row = self.data.iloc[i + self.delay]
 
                 target = target_row[POLLUTANT_COLUMNS].values.astype(np.float32)
@@ -59,19 +66,25 @@ class AQIDataset(Dataset):
                 targets.append(target)
                 timestamps.append(pd.to_datetime(target_row.name))
 
-            self.samples = torch.tensor(np.array(samples), dtype=torch.float32, device=self.device)
-            self.targets = torch.tensor(np.array(targets), dtype=torch.float32, device=self.device)
+            self.samples = torch.tensor(
+                np.array(samples), dtype=torch.float32, device=self.device
+            )
+            self.targets = torch.tensor(
+                np.array(targets), dtype=torch.float32, device=self.device
+            )
             self._timestamps = timestamps
 
             torch.save(self.samples, samples_path)
             torch.save(self.targets, targets_path)
             with open(metadata_path, "wb") as f:
-                pickle.dump({
-                    "timestamps": self._timestamps,
-                    "mean": self.mean,
-                    "std": self.std
-                }, f)
-
+                pickle.dump(
+                    {
+                        "timestamps": self._timestamps,
+                        "mean": self.mean,
+                        "std": self.std,
+                    },
+                    f,
+                )
 
     def _data_hash(self) -> str:
         content_hash = pd.util.hash_pandas_object(self.data, index=True).values
@@ -94,6 +107,7 @@ class AQIDataset(Dataset):
             "std": self.std,
         }
 
+
 class ConcatDatasetWithMetadata(ConcatDataset):
     def __init__(self, datasets):
         super().__init__(datasets)
@@ -112,9 +126,14 @@ class ConcatDatasetWithMetadata(ConcatDataset):
             if index < self._offsets[i] + len(self.datasets[i]):
                 local_index = index - self._offsets[i]
                 return self.datasets[i].get_metadata(local_index)
-        raise IndexError("Index out of range for get_metadata in ConcatDatasetWithMetadata.")
-    
-def generate_datasets(dataset_df : pd.DataFrame, lookback=96, delay=24, step=1) -> tuple[ConcatDatasetWithMetadata, ConcatDatasetWithMetadata]:
+        raise IndexError(
+            "Index out of range for get_metadata in ConcatDatasetWithMetadata."
+        )
+
+
+def generate_datasets(
+    dataset_df: pd.DataFrame, lookback=96, delay=24, step=1
+) -> tuple[ConcatDatasetWithMetadata, ConcatDatasetWithMetadata]:
     training_datasets = []
     validation_datasets = []
     for city, group in (pbar := tqdm(dataset_df.groupby("city_name"))):
@@ -132,8 +151,12 @@ def generate_datasets(dataset_df : pd.DataFrame, lookback=96, delay=24, step=1) 
         training_mean = training_df[POLLUTANT_COLUMNS].mean()
         training_std = training_df[POLLUTANT_COLUMNS].std()
 
-        training_df[POLLUTANT_COLUMNS] = (training_df[POLLUTANT_COLUMNS] - training_mean) / training_std
-        validation_df[POLLUTANT_COLUMNS] = (validation_df[POLLUTANT_COLUMNS] - training_mean) / training_std
+        training_df[POLLUTANT_COLUMNS] = (
+            training_df[POLLUTANT_COLUMNS] - training_mean
+        ) / training_std
+        validation_df[POLLUTANT_COLUMNS] = (
+            validation_df[POLLUTANT_COLUMNS] - training_mean
+        ) / training_std
 
         training_dataset = AQIDataset(
             training_df,

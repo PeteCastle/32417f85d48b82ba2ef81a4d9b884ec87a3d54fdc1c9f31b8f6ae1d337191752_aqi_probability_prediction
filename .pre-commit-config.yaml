@@ -20,3 +20,14 @@ repos:
     hooks:
       - id: nbstripout
         stages: [pre-commit, pre-push]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=5000"]  # 5MB limit
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-toml

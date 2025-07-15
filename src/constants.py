@@ -1,5 +1,5 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 __all__ = [
     "DATASET_DIR",
@@ -23,7 +23,7 @@ MODELS_DIR = Path(__file__).parent.parent / "models"
 if not MODELS_DIR.exists():
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-OUTPUT_DIR = Path(__file__).parent.parent / "output"
+OUTPUT_DIR = Path(__file__).parent.parent / "reports"
 if not OUTPUT_DIR.exists():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -58,5 +58,5 @@ POLLUTANT_COLUMNS = [
     "components.o3",
     "components.so2",
     "components.pm2_5",
-    "components.pm10"
+    "components.pm10",
 ]

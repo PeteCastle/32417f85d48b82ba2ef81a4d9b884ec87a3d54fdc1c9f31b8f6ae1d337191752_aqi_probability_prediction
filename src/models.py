@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class MDNLayer(nn.Module):
     def __init__(self, in_dim, out_dim, num_mixtures, dropout=0.0):
         super(MDNLayer, self).__init__()
@@ -20,10 +21,12 @@ class MDNLayer(nn.Module):
         sigma = torch.exp(self.fc_sigma(x)).clamp(min=1e-6)  # ensures strictly positive
         alpha = F.softmax(self.fc_alpha(x), dim=1)
         return mu, sigma, alpha
-    
-    
+
+
 class LSTM_MDN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_layers, num_mixtures, output_dim, dropout=0.3):
+    def __init__(
+        self, input_dim, hidden_dim, num_layers, num_mixtures, output_dim, dropout=0.3
+    ):
         super(LSTM_MDN, self).__init__()
         self.num_mixtures = num_mixtures
         self.hidden_dim = hidden_dim
@@ -33,7 +36,7 @@ class LSTM_MDN(nn.Module):
             hidden_dim,
             num_layers,
             batch_first=True,
-            dropout=dropout if num_layers > 1 else 0.0
+            dropout=dropout if num_layers > 1 else 0.0,
         )
 
         self.fc = nn.Linear(hidden_dim, hidden_dim)
@@ -53,9 +56,12 @@ class LSTM_MDN(nn.Module):
 
         mu, sigma, alpha = self.mdn(h)
         return mu, sigma, alpha
-    
+
+
 class GRU_MDN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_layers, num_mixtures, output_dim, dropout=0.3):
+    def __init__(
+        self, input_dim, hidden_dim, num_layers, num_mixtures, output_dim, dropout=0.3
+    ):
         super(GRU_MDN, self).__init__()
         self.num_mixtures = num_mixtures
         self.hidden_dim = hidden_dim
@@ -65,7 +71,7 @@ class GRU_MDN(nn.Module):
             hidden_dim,
             num_layers,
             batch_first=True,
-            dropout=dropout if num_layers > 1 else 0.0
+            dropout=dropout if num_layers > 1 else 0.0,
         )
 
         self.fc = nn.Linear(hidden_dim, hidden_dim)
@@ -85,9 +91,12 @@ class GRU_MDN(nn.Module):
 
         mu, sigma, alpha = self.mdn(h)
         return mu, sigma, alpha
-    
+
+
 class RNN_MDN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_layers, num_mixtures, output_dim, dropout=0.3):
+    def __init__(
+        self, input_dim, hidden_dim, num_layers, num_mixtures, output_dim, dropout=0.3
+    ):
         super(RNN_MDN, self).__init__()
         self.num_mixtures = num_mixtures
         self.hidden_dim = hidden_dim
@@ -97,8 +106,8 @@ class RNN_MDN(nn.Module):
             hidden_dim,
             num_layers,
             batch_first=True,
-            nonlinearity='tanh',
-            dropout=dropout if num_layers > 1 else 0.0
+            nonlinearity="tanh",
+            dropout=dropout if num_layers > 1 else 0.0,
         )
 
         self.fc = nn.Linear(hidden_dim, hidden_dim)
@@ -118,14 +127,17 @@ class RNN_MDN(nn.Module):
 
         mu, sigma, alpha = self.mdn(h)
         return mu, sigma, alpha
-    
+
+
 class TCNBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, dilation):
         super().__init__()
         self.conv = nn.Conv1d(
-            in_channels, out_channels,
-            kernel_size, padding=(kernel_size - 1) * dilation,
-            dilation=dilation
+            in_channels,
+            out_channels,
+            kernel_size,
+            padding=(kernel_size - 1) * dilation,
+            dilation=dilation,
         )
         self.relu = nn.ReLU()
         self.bn = nn.BatchNorm1d(out_channels)
@@ -134,6 +146,7 @@ class TCNBlock(nn.Module):
         x = self.conv(x)
         x = self.bn(x)
         return self.relu(x)
+
 
 class TCN_MDN(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_mixtures, output_dim, num_layers=4):
@@ -145,7 +158,7 @@ class TCN_MDN(nn.Module):
                     in_channels=input_dim if i == 0 else hidden_dim,
                     out_channels=hidden_dim,
                     kernel_size=3,
-                    dilation=2**i
+                    dilation=2**i,
                 )
             )
 
@@ -159,9 +172,19 @@ class TCN_MDN(nn.Module):
         x = self.tcn(x)
         x = self.global_pool(x).squeeze(-1)  # (B, hidden_dim)
         return self.mdn(x)
-    
+
+
 class Transformer_MDN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_heads, num_layers, num_mixtures, output_dim, dropout=0.1):
+    def __init__(
+        self,
+        input_dim,
+        hidden_dim,
+        num_heads,
+        num_layers,
+        num_mixtures,
+        output_dim,
+        dropout=0.1,
+    ):
         super().__init__()
         self.input_proj = nn.Linear(input_dim, hidden_dim)
         self.input_norm = nn.LayerNorm(hidden_dim)
@@ -173,7 +196,7 @@ class Transformer_MDN(nn.Module):
             dim_feedforward=hidden_dim * 4,
             dropout=dropout,
             batch_first=True,
-            norm_first=True
+            norm_first=True,
         )
         self.num_mixtures = num_mixtures
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
