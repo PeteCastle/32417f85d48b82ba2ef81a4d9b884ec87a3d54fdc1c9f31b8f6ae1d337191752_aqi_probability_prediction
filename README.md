@@ -38,16 +38,25 @@ Note: The data structure in Kaggle might've changed and updated since we last ac
 
 ### 1. Create and activate a virtual environment using `uv`
 Ensure that UV is [installed in your computer](https://docs.astral.sh/uv/getting-started/installation/).
+
+**(For Linux/MacOS)**
 ```bash
 uv venv
 source .venv/bin/activate
+```
+
+**(For Windows)**
+```bash
+uv venv
+source .venv/Scripts/activate.ps1
 ```
 
 ### 2. Install dependencies
 Use either of the following, depending on your system’s hardware:
 - For Apple Silicon / Metal backend: `uv pip install '.[metal]'`
 - For NVIDIA GPU / CUDA backend: `uv pip install '.[cuda]'`
-
+- CPU Only: `uv pip install '.[cpu]'`
+- 
 ### 3. Run Pre-Commit Hooks  (optional but recommended)
 Install pre-commit hooks to ensure code quality and consistency:
 ```bash

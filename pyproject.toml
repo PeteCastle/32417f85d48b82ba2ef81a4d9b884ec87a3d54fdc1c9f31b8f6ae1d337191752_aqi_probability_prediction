@@ -25,9 +25,15 @@ dependencies = [
 [project.optional-dependencies]
 cuda = [
   "torch",
-  "torchvision"
+  "torchvision",
+  "torchaudio"
 ]
 metal = [
+  "torch",
+  "torchvision",
+  "torchaudio"
+]
+cpu = [
   "torch",
   "torchvision",
   "torchaudio"
