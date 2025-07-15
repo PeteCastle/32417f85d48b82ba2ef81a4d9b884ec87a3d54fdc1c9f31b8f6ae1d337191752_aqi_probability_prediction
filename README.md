@@ -56,7 +56,7 @@ Use either of the following, depending on your system’s hardware:
 - For Apple Silicon / Metal backend: `uv pip install '.[metal]'`
 - For NVIDIA GPU / CUDA backend: `uv pip install '.[cuda]'`
 - CPU Only: `uv pip install '.[cpu]'`
-- 
+
 ### 3. Run Pre-Commit Hooks  (optional but recommended)
 Install pre-commit hooks to ensure code quality and consistency:
 ```bash
